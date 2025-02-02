@@ -1,6 +1,7 @@
 [build]
-command = "pip install -r requirements.txt"
-publish = "templates"
+publish = "public"
 
-[functions]
-directory = "functions"
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

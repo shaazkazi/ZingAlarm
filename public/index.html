@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Alarm</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/static/icons/icon512_rounded.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="ZingAlarm">
+    <link rel="apple-touch-icon" href="icon512_rounded.png">
+    <link rel="icon" href="/static/icons/icon512_rounded.png" sizes="512x512" type="image/png">
+
+    <style>
+        body {
+            background: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .container {
+            max-width: 800px;
+            margin-top: 2rem;
+        }
+        .alarm-card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: transform 0.2s;
+        }
+        .alarm-card:hover {
+            transform: translateY(-2px);
+        }
+        .countdown {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #007bff;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+        .list-group-item {
+            border-radius: 10px !important;
+            margin-bottom: 8px;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Smart Alarm</h1>
+                      <!-- Notification Permission -->
+                      <div class="alarm-card text-center">
+                          <button class="btn btn-primary me-2" onclick="requestNotificationPermission()">Enable Notifications</button>
+                          <button class="btn btn-secondary" onclick="testSound()">Test Sound</button>
+                      </div>
+        <!-- Add New Alarm -->
+        <div class="alarm-card">
+            <h3>Set New Alarm</h3>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <input type="time" class="form-control" id="alarmTime">
+                </div>
+                <div class="col-md-4">
+                    <select class="form-select" id="alarmSound">
+                        <option value="bell">Bell</option>
+                        <option value="digital">Digital</option>
+                        <option value="gentle">Gentle</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-success w-100" onclick="setNewAlarm()">Add Alarm</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Alarms -->
+        <div class="alarm-card">
+            <h3>Active Alarms</h3>
+            <div id="activeAlarms" class="list-group">
+                <!-- Alarms will be added here dynamically -->
+            </div>
+        </div>
+
+        <!-- Next Alarm Countdown -->
+        <div class="alarm-card text-center">
+            <h3>Next Alarm In</h3>
+            <div class="countdown" id="countdown">--:--:--</div>
+        </div>
+    </div>
+
+    <!-- Audio elements -->
+    <audio id="bellSound" src="/static/sounds/bell.mp3"></audio>
+    <audio id="digitalSound" src="/static/sounds/digital.mp3"></audio>
+    <audio id="gentleSound" src="/static/sounds/gentle.mp3"></audio>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let alarms = [];
+
+        function showToast(message) {
+            const toastContainer = document.createElement('div');
+            toastContainer.className = 'position-fixed bottom-0 end-0 p-3';
+            toastContainer.style.zIndex = '11';
+            
+            toastContainer.innerHTML = `
+                <div class="toast show" role="alert">
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(toastContainer);
+            setTimeout(() => toastContainer.remove(), 3000);
+        }
+
+        function testSound() {
+            const sound = document.getElementById('alarmSound').value;
+            const audio = document.getElementById(`${sound}Sound`);
+            if (audio) {
+                audio.currentTime = 0;
+                audio.play();
+                setTimeout(() => {
+                    audio.pause();
+                    audio.currentTime = 0;
+                }, 3000);
+                showToast("Testing " + sound + " sound");
+            }
+        }
+
+        function requestNotificationPermission() {
+            if ("Notification" in window) {
+                Notification.requestPermission().then(permission => {
+                    if (permission === "granted") {
+                        showToast("Notifications enabled!");
+                    }
+                });
+            }
+        }
+
+        function setNewAlarm() {
+            const time = document.getElementById('alarmTime').value;
+            const sound = document.getElementById('alarmSound').value;
+            
+            if (!time) return;
+
+            const alarm = {
+                id: Date.now(),
+                time: time,
+                sound: sound,
+                active: true
+            };
+
+            alarms.push(alarm);
+            saveAlarms();
+            updateAlarmsList();
+            updateCountdown();
+            showToast("Alarm set successfully!");
+        }
+
+        function saveAlarms() {
+            localStorage.setItem('alarms', JSON.stringify(alarms));
+            fetch('/.netlify/functions/save-alarms', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ alarms: alarms })
+            });
+        }
+
+        function updateAlarmsList() {
+            const container = document.getElementById('activeAlarms');
+            container.innerHTML = '';
+
+            alarms.forEach(alarm => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item d-flex justify-content-between align-items-center';
+                item.innerHTML = `
+                    <div>
+                        <h5 class="mb-1">${alarm.time}</h5>
+                        <small>Sound: ${alarm.sound}</small>
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-warning me-2" onclick="snoozeAlarm(${alarm.id})">Snooze</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteAlarm(${alarm.id})">Delete</button>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function snoozeAlarm(id) {
+            const alarm = alarms.find(a => a.id === id);
+            if (alarm) {
+                const [hours, minutes] = alarm.time.split(':');
+                const date = new Date();
+                date.setHours(parseInt(hours));
+                date.setMinutes(parseInt(minutes) + 5);
+                alarm.time = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+                saveAlarms();
+                updateAlarmsList();
+                updateCountdown();
+                showToast("Alarm snoozed for 5 minutes");
+            }
+        }
+
+        function deleteAlarm(id) {
+            alarms = alarms.filter(a => a.id !== id);
+            saveAlarms();
+            updateAlarmsList();
+            updateCountdown();
+            showToast("Alarm deleted");
+        }
+
+        function updateCountdown() {
+            const now = new Date();
+            let nextAlarm = null;
+            let minDiff = Infinity;
+
+            if (window.countdownInterval) {
+                clearInterval(window.countdownInterval);
+            }
+
+            alarms.forEach(alarm => {
+                const [hours, minutes] = alarm.time.split(':');
+                const alarmDate = new Date();
+                alarmDate.setHours(parseInt(hours), parseInt(minutes), 0);
+
+                if (alarmDate < now) {
+                    alarmDate.setDate(alarmDate.getDate() + 1);
+                }
+
+                const diff = alarmDate - now;
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    nextAlarm = alarmDate;
+                }
+            });
+
+            const countdown = document.getElementById('countdown');
+            
+            if (nextAlarm && alarms.length > 0) {
+                window.countdownInterval = setInterval(() => {
+                    const now = new Date();
+                    const diff = nextAlarm - now;
+                    
+                    if (diff <= 0) {
+                        updateCountdown();
+                        return;
+                    }
+
+                    const hours = Math.floor(diff / (1000 * 60 * 60));
+                    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+                    
+                    countdown.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }, 1000);
+            } else {
+                countdown.textContent = '--:--:--';
+            }
+        }
+
+        function checkAndNotifyAlarms() {
+            const now = new Date();
+            const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            const currentSeconds = now.getSeconds();
+            
+            if (currentSeconds === 0) {
+                alarms.forEach(alarm => {
+                    if (alarm.time === currentTime && alarm.active) {
+                        // Play sound with user interaction handling
+                        playAlarmSound(alarm.sound).catch(error => {
+                            console.log("Will retry sound playback after user interaction");
+                            document.addEventListener('click', () => playAlarmSound(alarm.sound), {once: true});
+                        });
+                        
+                        // Show notification
+                        showNotification(alarm.time, alarm.sound);
+                        
+                        // Service worker notification
+                        navigator.serviceWorker.ready.then(registration => {
+                            registration.active.postMessage({
+                                type: 'ALARM_TRIGGERED',
+                                time: alarm.time,
+                                sound: alarm.sound
+                            });
+                        });
+                    }
+                });
+            }
+        }
+
+        async function playAlarmSound(sound) {
+            const audio = document.getElementById(`${sound}Sound`);
+            if (audio) {
+                audio.loop = true;
+                await audio.play();
+                setTimeout(() => {
+                    audio.pause();
+                    audio.currentTime = 0;
+                }, 30000);
+            }
+        }
+        
+        // Check every second for precise timing
+        setInterval(checkAndNotifyAlarms, 1000);
+
+        window.addEventListener('load', () => {
+            const savedAlarms = localStorage.getItem('alarms');
+            if (savedAlarms) {
+                alarms = JSON.parse(savedAlarms);
+                updateAlarmsList();
+                updateCountdown();
+            }
+        });
+
+        navigator.serviceWorker.addEventListener('message', (event) => {
+            if (event.data.type === 'REQUEST_ALARMS') {
+                event.source.postMessage({
+                    type: 'CHECK_ALARM',
+                    alarms: alarms
+                });
+            }
+        });
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js', {scope: '/'})
+                .then(() => console.log("Service Worker Registered"))
+                .catch(error => console.error("Service Worker Registration Failed:", error));
+        }
+        function showNotification(time, sound) {
+            if ("Notification" in window) {
+                // Web Notifications
+                if (Notification.permission === "granted") {
+                    new Notification("⏰ ZingAlarm", {
+                        body: `It's ${time}`,
+                        icon: 'icon512_rounded.png'
+                    });
+                }
+            } else {
+                // iOS Fallback
+                showToast(`Alarm: It's ${time}`);
+                // Vibrate if available
+                if ("vibrate" in navigator) {
+                    navigator.vibrate([200, 100, 200]);
+                }
+            }
+        }
+
+    </script>
+</body>
+</html>
+
